@@ -1,0 +1,119 @@
+install.packages("e1071")
+install.packages("rpart")
+install.packages("rpart.plot")
+install.packages("caret")
+        #regression RMSE:n laskentaa varten
+install.packages("randomForest")
+library(randomForest) #satunnaismetsÃ¤
+library(caTools)
+library(e1071)
+library(rpart.plot)
+library(rpart)
+library(caret)
+
+
+classification_matrix <- function (y, y_hat) {
+  table(y, y_hat)
+}
+
+F1 <- function (matrix){
+  TN <- matrix[1,1]
+  if (dim(matrix)[2] == 2) {
+    TP <- matrix[2,2]
+    FN <- matrix[1,2]
+  }
+  else {
+    TP <- 0
+    FN <- 0
+  }
+  FP <- matrix[2,1]
+  return (2 / (((TP+FP)/TP) + ((TP+FN)/TP)))
+}
+
+#funktio: accuracy (tarkkuus)
+accuracy <- function (TN,TP,FN,FP){
+  
+  return ((TN*1.0+TP)/(TN+TP+FN+FP))
+}
+
+data = read.csv("TitanicMatkustajat(2).csv",sep = ';',dec = ',')
+data$Ika <- as.numeric(data$Ika)
+options(digits=5)
+data$Hinta <- as.numeric(data$Hinta)
+summary(data)
+data_clean <- data[!is.na(data$Ika),]
+data_clean <- data_clean[!is.na(data$Hinta),]
+data_clean <- data_clean[!is.na(data_clean$LahtoSatama),]
+data_clean <- data_clean[(data_clean$Hytti != ''),]
+
+data$Sukupuoli = as.factor(data$Sukupuoli)
+
+#jako opetus- ja testidataan
+set.seed(552)
+split <- sample.split(data_clean$Selviytyi, SplitRatio = 0.75)
+data_train <- subset(data_clean, split==TRUE)
+data_test <- subset(data_clean, split==FALSE)
+
+regressio1 <- rpart(Selviytyi ~ Matkustusluokka+ Sukupuoli+ Ika+ Hinta + LahtoSatama, 
+                    data = data_train, 
+                    method="anova")
+
+printcp(regressio1)
+plotcp(regressio1)
+summary(regressio1)
+prp(regressio1)
+
+ennust1 <- predict(regressio1, newdata=data_test, type="vector")
+matrix1 <- classification_matrix(data_test$Selviytyi, ennust1)
+print(accuracy(matrix1))
+
+
+set.seed(100)
+
+trControl <- trainControl(method = "cv", number = 10)  # cv = cross-validation
+
+cpArvot <- expand.grid(.cp = seq(0.009,0.02,0.0005))  # tutkittavat cp-arvot (23 kpl)
+
+#Muodostetaan ristivalidoinnilla erilaiset mallit
+
+mallit <- train(Selviytyi ~ Matkustusluokka+ Sukupuoli+ Ika+ Hinta + LahtoSatama, data=data_train, method = "rpart",
+                
+                trControl = trControl, tuneGrid = cpArvot)
+
+
+data = read.csv("loans_imputed.csv")
+set.seed(144)
+split <- sample.split(data$not.fully.paid, SplitRatio = 0.7)
+data_train <- subset(data, split==TRUE)
+data_test <- subset(data, split==FALSE)
+
+malli <- svm(not.fully.paid ~ credit.policy+ purpose+ installment+ log.annual.inc+ fico+ revol.bal+ inq.last.6mths + pub.rec, 
+             data = data_train, 
+             kernel='polynomial')
+
+ennusteet <- predict(malli, newdata = data_test)
+
+matrix1 <- classification_matrix(data_test$not.fully.paid, ennusteet,0.5)
+print(accuracy(matrix1))
+
+
+
+data = read.csv("winequality-white.csv",sep = ';')
+
+set.seed(44)
+split <- sample.split(data$quality, SplitRatio = 0.7)
+data_train <- subset(data, split==TRUE)
+data_test <- subset(data, split==FALSE)
+
+set.seed(100)
+malli3 <- randomForest(quality ~ ., 
+                       data = data_train, 
+                       ntree=150)
+
+ennusteet5 <- predict(malli3, newdata = data_test)
+table(ennusteet)
+ennusteet <- round(ennusteet5)
+matrix3 <- classification_matrix(data_test$quality, ennusteet)
+table(matrix3)
+print(accuracy(matrix3[1,1],matrix3[2,2],matrix3[1,2],matrix3[2,1]))
+print(F1(matrix3))
